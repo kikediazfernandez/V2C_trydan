@@ -1,7 +1,4 @@
 from homeassistant.components.number import NumberEntity, RestoreNumber
-from homeassistant.const import DEVICE_DEFAULT_NAME
-from homeassistant.core import callback
-from homeassistant.helpers.dispatcher import async_dispatcher_connect
 from homeassistant.components.number import NumberEntity
 from homeassistant.components.sensor import SensorStateClass
 from homeassistant.const import DEVICE_DEFAULT_NAME, CONF_IP_ADDRESS
