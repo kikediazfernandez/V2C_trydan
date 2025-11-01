@@ -1,16 +1,22 @@
 """The v2c_trydan component."""
-from homeassistant.config_entries import SOURCE_IMPORT
+from homeassistant.config_entries import SOURCE_IMPORT, ConfigEntry
 from homeassistant.core import HomeAssistant, ServiceCall
 from homeassistant.const import CONF_IP_ADDRESS, Platform
+from homeassistant.helpers import device_registry as dr, config_validation as cv
+from homeassistant.helpers.aiohttp_client import async_get_clientsession
 import logging
 import aiohttp
-from homeassistant.helpers.aiohttp_client import async_get_clientsession
+
+from .coordinator import V2CtrydanDataUpdateCoordinator
 
 _LOGGER = logging.getLogger(__name__)
 
 DOMAIN = "v2c_trydan"
 
-PLATFORMS = [Platform.SENSOR, Platform.SWITCH, Platform.NUMBER]
+PLATFORMS = [Platform.SENSOR, Platform.SWITCH, Platform.NUMBER, Platform.SELECT]
+
+# Configuration schema - this integration is config entry only
+CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
 
 async def async_setup(hass: HomeAssistant, config: dict):
     hass.data.setdefault(DOMAIN, {})
@@ -27,9 +33,33 @@ async def async_setup(hass: HomeAssistant, config: dict):
 
     return True
 
-async def async_setup_entry(hass: HomeAssistant, entry):
-    hass.data[DOMAIN]["ip_address"] = entry.data[CONF_IP_ADDRESS]
+async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
+    """Set up V2C Trydan from a config entry."""
+    hass.data.setdefault(DOMAIN, {})
+
     ip_address = entry.data[CONF_IP_ADDRESS]
+
+    # Create the coordinator
+    coordinator = V2CtrydanDataUpdateCoordinator(hass, ip_address)
+
+    # Fetch initial data
+    await coordinator.async_config_entry_first_refresh()
+
+    # Store the coordinator
+    hass.data[DOMAIN][entry.entry_id] = coordinator
+
+    # Register device
+    device_registry = dr.async_get(hass)
+    device_registry.async_get_or_create(
+        config_entry_id=entry.entry_id,
+        identifiers={(DOMAIN, coordinator.ip_address)},
+        manufacturer="V2C",
+        model="Trydan",
+        name=f"V2C Trydan ({coordinator.ip_address})",
+        configuration_url=f"http://{coordinator.ip_address}",
+    )
+
+    await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
 
     async def set_min_intensity(call: ServiceCall):
         #_LOGGER.debug("min_intensity service called")
@@ -38,7 +68,7 @@ async def async_setup_entry(hass: HomeAssistant, entry):
             min_intensity = int(min_intensity)
             if 6 <= min_intensity <= 32:
                 #_LOGGER.debug(f"Valid min_intensity: {min_intensity}")
-                await async_set_min_intensity(hass, ip_address, min_intensity)
+                await async_set_min_intensity(hass, coordinator.ip_address, min_intensity)
             else:
                 _LOGGER.error("min_intensity must be between 6 and 32")
         except ValueError:
@@ -50,7 +80,7 @@ async def async_setup_entry(hass: HomeAssistant, entry):
             dynamic_power_mode = int(dynamic_power_mode)
             if 0 <= dynamic_power_mode <= 7:
                 #_LOGGER.debug(f"Valid dynamic_power_mode: {dynamic_power_mode}")
-                await async_set_dynamic_power_mode(hass, ip_address, dynamic_power_mode)
+                await async_set_dynamic_power_mode(hass, coordinator.ip_address, dynamic_power_mode)
             else:
                 _LOGGER.error("DynamicPowerMode must be between 0 and 7")
         except ValueError:
@@ -62,7 +92,7 @@ async def async_setup_entry(hass: HomeAssistant, entry):
             max_intensity = int(max_intensity)
             if 6 <= max_intensity <= 32:
                 #_LOGGER.debug(f"Valid max_intensity: {max_intensity}")
-                await async_set_max_intensity(hass, ip_address, max_intensity)
+                await async_set_max_intensity(hass, coordinator.ip_address, max_intensity)
             else:
                 _LOGGER.error("max_intensity must be between 6 y 32")
         except ValueError:
@@ -74,7 +104,7 @@ async def async_setup_entry(hass: HomeAssistant, entry):
             intensity = int(intensity)
             if 6 <= intensity <= 32:
                 #_LOGGER.debug(f"Valid intensity: {intensity}")
-                await async_set_intensity(hass, ip_address, intensity)
+                await async_set_intensity(hass, coordinator.ip_address, intensity)
             else:
                 _LOGGER.error("intensity must be between 6 y 32")
         except ValueError:
@@ -88,7 +118,7 @@ async def async_setup_entry(hass: HomeAssistant, entry):
                 min_intensity = int(min_intensity)
                 if 6 <= min_intensity <= 32:
                     if entry:
-                        ip_address = entry.data[CONF_IP_ADDRESS]
+                        ip_address = coordinator.ip_address
                         #_LOGGER.debug(f"Calling async_set_min_intensity with IP: {ip_address} and min_intensity: {min_intensity}")
                         await async_set_min_intensity(hass, ip_address, min_intensity)
                     else:
@@ -108,9 +138,9 @@ async def async_setup_entry(hass: HomeAssistant, entry):
                 dynamic_power_mode = int(dynamic_power_mode)
                 if 0 <= dynamic_power_mode <= 7:
                     if entry:
-                        ip_address = entry.data[CONF_IP_ADDRESS]
+                        ip_address = coordinator.ip_address
                         #_LOGGER.debug(f"Calling async_set_dynamic_power_mode with IP: {ip_address} and dynamic_power_mode: {dynamic_power_mode}")
-                        await async_set_dynamic_power_mode(hass, ip_address, dynamic_power_mode)
+                        await async_set_dynamic_power_mode(hass, coordinator.ip_address, dynamic_power_mode)
                     else:
                         _LOGGER.error("Entry data not found for setting dynamic_power_mode_slider")
                 else:
@@ -128,9 +158,9 @@ async def async_setup_entry(hass: HomeAssistant, entry):
                 max_intensity = int(max_intensity)
                 if 6 <= max_intensity <= 32:
                     if entry:
-                        ip_address = entry.data[CONF_IP_ADDRESS]
+                        ip_address = coordinator.ip_address
                         #_LOGGER.debug(f"Calling async_set_max_intensity with IP: {ip_address} and max_intensity: {max_intensity}")
-                        await async_set_max_intensity(hass, ip_address, max_intensity)
+                        await async_set_max_intensity(hass, coordinator.ip_address, max_intensity)
                     else:
                         _LOGGER.error("Entry data not found for setting max_intensity_slider")
                 else:
@@ -148,53 +178,57 @@ async def async_setup_entry(hass: HomeAssistant, entry):
     hass.services.async_register(DOMAIN, "set_max_intensity_slider", set_max_intensity_slider)
     hass.services.async_register(DOMAIN, "set_dynamic_power_mode_slider", set_dynamic_power_mode_slider)
 
-    await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
-
     return True
 
-async def async_unload_entry(hass: HomeAssistant, entry):
-    return await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
+async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
+    """Unload a config entry."""
+    unload_ok = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
+
+    if unload_ok:
+        hass.data[DOMAIN].pop(entry.entry_id, None)
+
+    return unload_ok
 
 async def async_set_min_intensity(hass: HomeAssistant, ip_address: str, min_intensity: int):
-    #_LOGGER.debug(f"Setting min intensity to {min_intensity} at IP {ip_address}")
-    async with aiohttp.ClientSession() as session:
-        url = f"http://{ip_address}/write/MinIntensity={min_intensity}"
-        try:
-            async with session.get(url) as response:
-                response.raise_for_status()
-                #_LOGGER.debug(f"Min intensity set successfully to {min_intensity} at IP {ip_address}")
-        except aiohttp.ClientError as err:
-            _LOGGER.error(f"Error communicating with API: {err}")
+    """Set minimum charging intensity."""
+    session = async_get_clientsession(hass)
+    url = f"http://{ip_address}/write/MinIntensity={min_intensity}"
+    try:
+        async with session.get(url, timeout=aiohttp.ClientTimeout(total=10)) as response:
+            response.raise_for_status()
+            _LOGGER.debug(f"Min intensity set to {min_intensity} at {ip_address}")
+    except aiohttp.ClientError as err:
+        _LOGGER.error(f"Error setting min intensity: {err}")
 
-async def async_set_max_intensity(hass, ip_address: str, max_intensity):
-    #_LOGGER.debug(f"Setting max intensity to {max_intensity} at IP {ip_address}")
-    async with aiohttp.ClientSession() as session:
-        url = f"http://{ip_address}/write/MaxIntensity={max_intensity}"
-        try:
-            async with session.get(url) as response:
-                response.raise_for_status()
-                #_LOGGER.debug(f"Max intensity set successfully to {max_intensity} at IP {ip_address}")
-        except aiohttp.ClientError as err:
-            _LOGGER.error(f"Error communicating with API: {err}")
+async def async_set_max_intensity(hass: HomeAssistant, ip_address: str, max_intensity: int):
+    """Set maximum charging intensity."""
+    session = async_get_clientsession(hass)
+    url = f"http://{ip_address}/write/MaxIntensity={max_intensity}"
+    try:
+        async with session.get(url, timeout=aiohttp.ClientTimeout(total=10)) as response:
+            response.raise_for_status()
+            _LOGGER.debug(f"Max intensity set to {max_intensity} at {ip_address}")
+    except aiohttp.ClientError as err:
+        _LOGGER.error(f"Error setting max intensity: {err}")
 
 async def async_set_dynamic_power_mode(hass: HomeAssistant, ip_address: str, dynamic_power_mode: int):
-    #_LOGGER.debug(f"Setting dynamic power mode to {dynamic_power_mode} at IP {ip_address}")
-    async with aiohttp.ClientSession() as session:
-        url = f"http://{ip_address}/write/DynamicPowerMode={dynamic_power_mode}"
-        try:
-            async with session.get(url) as response:
-                response.raise_for_status()
-                #_LOGGER.debug(f"Dynamic power mode set successfully to {dynamic_power_mode} at IP {ip_address}")
-        except aiohttp.ClientError as err:
-            _LOGGER.error(f"Error communicating with API: {err}")
+    """Set dynamic power mode."""
+    session = async_get_clientsession(hass)
+    url = f"http://{ip_address}/write/DynamicPowerMode={dynamic_power_mode}"
+    try:
+        async with session.get(url, timeout=aiohttp.ClientTimeout(total=10)) as response:
+            response.raise_for_status()
+            _LOGGER.debug(f"Dynamic power mode set to {dynamic_power_mode} at {ip_address}")
+    except aiohttp.ClientError as err:
+        _LOGGER.error(f"Error setting dynamic power mode: {err}")
 
-async def async_set_intensity(hass, ip_address: str, intensity):
-    #_LOGGER.debug(f"Setting intensity to {intensity} at IP {ip_address}")
-    async with aiohttp.ClientSession() as session:
-        url = f"http://{ip_address}/write/Intensity={intensity}"
-        try:
-            async with session.get(url) as response:
-                response.raise_for_status()
-                #_LOGGER.debug(f"Intensity set successfully to {intensity} at IP {ip_address}")
-        except aiohttp.ClientError as err:
-            _LOGGER.error(f"Error communicating with API: {err}")
+async def async_set_intensity(hass: HomeAssistant, ip_address: str, intensity: int):
+    """Set charging intensity."""
+    session = async_get_clientsession(hass)
+    url = f"http://{ip_address}/write/Intensity={intensity}"
+    try:
+        async with session.get(url, timeout=aiohttp.ClientTimeout(total=10)) as response:
+            response.raise_for_status()
+            _LOGGER.debug(f"Intensity set to {intensity} at {ip_address}")
+    except aiohttp.ClientError as err:
+        _LOGGER.error(f"Error setting intensity: {err}")
