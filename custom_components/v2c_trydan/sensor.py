@@ -610,7 +610,10 @@ class PrecioLuzEntity(CoordinatorEntity, SensorEntity):
     @property
     def native_value(self):
         if self.v2c_precio_luz_entity is not None:
-            return self.v2c_precio_luz_entity.state
+            try:
+                return float(self.v2c_precio_luz_entity.state)
+            except (ValueError,TypeError):
+                return None
         else:
             return None
 
@@ -680,10 +683,13 @@ class PrecioLuzEntity(CoordinatorEntity, SensorEntity):
     
         async def pause_or_resume_charging(current_state, max_price, paused_switch, v2c_carga_pvpc_switch):
             if v2c_carga_pvpc_switch.state == "on":
-                if float(current_state) <= max_price:
-                    await self.hass.services.async_call("switch", "turn_off", {"entity_id": paused_switch.entity_id})
-                else:
-                    await self.hass.services.async_call("switch", "turn_on", {"entity_id": paused_switch.entity_id})
+                try:
+                    if float(current_state) <= max_price:
+                        await self.hass.services.async_call("switch", "turn_off", {"entity_id": paused_switch.entity_id})
+                    else:
+                        await self.hass.services.async_call("switch", "turn_on", {"entity_id": paused_switch.entity_id})
+                except (ValueError, TypeError):
+                    _LOGGER.info(f"Current state is {current_state}")
 
         async def update_state(event_time):
             entities = await find_entities()
@@ -714,7 +720,7 @@ class PrecioLuzEntity(CoordinatorEntity, SensorEntity):
                 self.extra_state_attributes["TotalHours"] = self.total_hours
 
                 await pause_or_resume_charging(
-                    self.state, max_price, paused_switch, v2c_carga_pvpc_switch
+                    precio_luz_entity.state, max_price, paused_switch, v2c_carga_pvpc_switch
                 )
 
                 self.v2c_precio_luz_entity = precio_luz_entity
